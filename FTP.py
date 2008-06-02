@@ -37,7 +37,7 @@ class FTPWindowHelper:
 		self.message_id = None
 		self.config_path = os.path.expanduser('~/.gnome2/gedit/plugins')
 		self.ftp_cwd = '/'
-		
+
 		# create panel
 		self._browser = FileBrowser(self)
 		panel = self._window.get_side_panel()
@@ -45,6 +45,10 @@ class FTPWindowHelper:
 
 		self.load_config()
 
+	def flush_events(self):
+		while gtk.events_pending():
+			gtk.main_iteration() 
+	
 	def load_config(self):
 		# load last config
 		try:
@@ -60,10 +64,10 @@ class FTPWindowHelper:
 			self.ftp_cwd = f.readline().strip()
 			self._browser.location.set_text(self.ftp_cwd)
 			f.close()
-	
+
 	def save_config(self):
 		if not os.path.exists(self.config_path):
-			try: 
+			try:
 				os.makedirs(self.config_path)
 			except:
 				self.error_msg("Error creating user plugin directory")
@@ -86,6 +90,7 @@ class FTPWindowHelper:
 		if self.message_id:
 			self.statusbar.remove(self.context_id, self.message_id)
 		self.message_id = self.statusbar.push(self.context_id, "FTP: %s" % message)
+		self.flush_events()
 
 	def deactivate(self):
 		panel = self._window.get_side_panel()
@@ -95,10 +100,10 @@ class FTPWindowHelper:
 		self._browser = None
 		if self.message_id:
 			self.statusbar.remove(self.context_id, self.message_id)
-				
+
 	def update_ui(self):
 		doc = self._window.get_active_document()
-		if doc!=None and hasattr(doc,'is_ftpfile'): 
+		if doc!=None and hasattr(doc,'is_ftpfile'):
 			self.update_status('Temp file %s' %doc.get_uri_for_display())
 		pass
 
@@ -112,7 +117,7 @@ class FTPWindowHelper:
 		path = "/tmp/gedit/%s%s" %(self._browser.url.get_text(),self.ftp_cwd)
 		tmpfile = '%s/%s' %(path,file)
 		if not os.path.exists(path):
-			try: 
+			try:
 				os.makedirs(path, mode=0777)
 			except:
 				self.error_msg("Error creating directory %s" %(path))
@@ -120,7 +125,7 @@ class FTPWindowHelper:
 
 		ftp = self.ftp_connect()
 		if ftp==None: return
-		
+
 		self.update_status('Downloading %s/%s' %(self.ftp_cwd,file))
 		try:
 			ftp.retrbinary('RETR %s/%s' %(self.ftp_cwd,file), open(tmpfile, 'wb').write)
@@ -139,12 +144,13 @@ class FTPWindowHelper:
 		if doc.is_untouched(): return
 		ftp = self.ftp_connect(url,u,p,False)
 		if ftp==None: return
-		
+
 		self.update_status('Uploading %s to %s@%s%s' %(src,u,url,dest))
 		try:
 			ftp.storbinary('STOR %s' %dest, open(src, 'rb'), 1024)
 		except:
 			self.error_msg('Error uploading file %s' %dest)
+		self.update_status('Saved.')
 		ftp.close()
 
 	def ftp_connect(self,url=None,u=None,p=None,save=True):
@@ -156,11 +162,11 @@ class FTPWindowHelper:
 			p = self._browser.pasw.get_text()
 
 		self.update_status('Connecting %s@%s' %(u,url))
-		
+
 		# go ftp
-		try: 
+		try:
 			ftp = FTP(url,u,p)
-		except: 
+		except:
 			self.error_msg('FTP Connecting error')
 			return None
 		self.save_config()
@@ -169,10 +175,15 @@ class FTPWindowHelper:
 	def open_folder(self, folder):
 		ftp = self.ftp_connect()
 		if ftp==None: return
-		
+
 		# reset directory to default
 		if folder != None:
-			ftp.cwd("%s/%s" %(self.ftp_cwd,folder))
+			try:
+				ftp.cwd("%s/%s" %(self.ftp_cwd,folder))
+			except:
+				self.error_msg('Error opening folder')
+				self.open_folder(None)
+				return
 		self.ftp_cwd = ftp.pwd()
 		self._browser.location.set_text(self.ftp_cwd)
 		self.ftp_list(ftp)
@@ -183,22 +194,23 @@ class FTPWindowHelper:
 		m.set_title('FTP Browser')
 		m.run()
 		m.destroy()
-	
+
 	def ftp_list(self,ftp):
 		self._list = []
 		self._browser.browser_model.clear()
 		self.update_status('Reading %s' %self.ftp_cwd)
 		if self.ftp_cwd != '/':
 			self._browser.browser_model.append([self._browser.foldericon,'..','d'])
-		
-		try: 
+
+		try:
 			allfiles = ftp.dir(self.ftp_cwd,self.list_files)
-		except: 
+		except:
 			self.error_msg('FTP LIST error')
 			return
-	
+
 	def list_files(self,item):
 		a = re.compile(r'\s+').split(item)
+		if len(a) < 9: return	#skip if the line returned is not friendly
 		self._list.append(a)
 		if re.compile(r'^d').match(a[0]):
 			self._browser.browser_model.append([self._browser.foldericon,a[8],'d'])
@@ -219,14 +231,14 @@ class FTPPlugin(gedit.Plugin):
 	def __init__(self):
 		gedit.Plugin.__init__(self)
 		self._instances = {}
-	
+
 	def activate(self, window):
 		self._instances[window] = FTPWindowHelper(self, window)
-	
+
 	def deactivate(self, window):
 		self._instances[window].deactivate()
 		del self._instances[window]
-	
+
 	def update_ui(self, window):
 		self._instances[window].update_ui()
 
@@ -234,7 +246,7 @@ class FTPPlugin(gedit.Plugin):
 class FileBrowser(gtk.VBox):
 	def __init__(self, helper):
 		gtk.VBox.__init__(self)
-		
+
 		# ftp params
 		ff = gtk.Table(4,2)
 		ff.set_row_spacings(2); ff.set_col_spacings(5);
@@ -251,14 +263,14 @@ class FileBrowser(gtk.VBox):
 		self.filt = gtk.Entry()
 		self.filt.set_size_request(10,-1)
 		self.pasw.set_visibility(False)
-		
+
 		ff.attach(self.url,1,2,0,1);
 		ff.attach(self.user,1,2,1,2);
 		ff.attach(self.pasw,1,2,2,3);
 		#ff.attach(self.filt,1,2,3,4);
 
 		self.pack_start(ff, False, False)
-		
+
 		# buttons
 		#b = gtk.HBox(False)
 		i=gtk.Image()
@@ -284,14 +296,14 @@ class FileBrowser(gtk.VBox):
 		buttons.pack_start(btn_refresh,False,False)
 
 		self.pack_start(buttons,False,False)
-		
+
 		#location label
 		self.location = gtk.Label(helper.ftp_cwd)
 		self.location.set_line_wrap(True)
 		self.location.set_justify(gtk.JUSTIFY_LEFT)
 		self.location.set_alignment(0,0.5)
 		self.pack_start(self.location, False, False)
-		
+
 		# add a treeview
 		sw = gtk.ScrolledWindow()
 		sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
@@ -301,17 +313,17 @@ class FileBrowser(gtk.VBox):
 		self.browser.set_headers_visible(True)
 		sw.add(self.browser)
 		self.pack_start(sw)
-		
+
 		self.foldericon = self.browser.render_icon('gtk-directory',gtk.ICON_SIZE_MENU)
 		self.fileicon = self.browser.render_icon('gtk-file',gtk.ICON_SIZE_MENU)
-		
+
 		# add columns to the treeview
 		col = gtk.TreeViewColumn()
 		render_pixbuf = gtk.CellRendererPixbuf()
 		col.pack_start(render_pixbuf, expand=False)
 		col.add_attribute(render_pixbuf, 'pixbuf', 0)
 		self.browser.append_column(col)
-		
+
 		col = gtk.TreeViewColumn('Filename')
 		render_text = gtk.CellRendererText()
 		col.pack_start(render_text, expand=True)
