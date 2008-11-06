@@ -148,9 +148,9 @@ class FTPWindowHelper:
 		self.update_status('Uploading %s to %s@%s%s' %(src,u,url,dest))
 		try:
 			ftp.storbinary('STOR %s' %dest, open(src, 'rb'), 1024)
+			self.update_status('Saved.')
 		except:
 			self.error_msg('Error uploading file %s' %dest)
-		self.update_status('Saved.')
 		ftp.close()
 
 	def ftp_connect(self,url=None,u=None,p=None,save=True):
@@ -161,11 +161,20 @@ class FTPWindowHelper:
 		if p==None:
 			p = self._browser.pasw.get_text()
 
-		self.update_status('Connecting %s@%s' %(u,url))
+		if url.find(':') != -1:
+			v = url.split(':')
+			url = v[0]
+			port = v[1]
+		else:
+			port = 21
+
+		self.update_status('Connecting %s@%s on port %s' %(u,url,port))
 
 		# go ftp
 		try:
-			ftp = FTP(url,u,p)
+			ftp = FTP()
+			ftp.connect(url,port)
+			ftp.login(u,p)
 		except:
 			self.error_msg('FTP Connecting error')
 			return None
