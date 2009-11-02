@@ -4,6 +4,6 @@ Module=FTP
 IAge=2
 Name=FTP Browser
 Description=Open files from FTP and edit, when saved the file will be uploaded back
-Authors=yinsee <yinsee@wsatp.com>
+Authors=yinsee <yinsee@wsatp.com>;Stephen McDonald <stephen.mc@gmail.com>
 Copyright=Copyright 2008 YinSee, Tan <yinsee@wsatp.com>
 Website=http://code.google.com/p/gedit-ftp-browser/
