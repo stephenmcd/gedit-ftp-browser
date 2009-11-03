@@ -292,12 +292,19 @@ class FTPWindowHelper:
 
 	def list_files(self,item):
 		a = re.compile(r'\s+').split(item)
-		if len(a) < 9: return	#skip if the line returned is not friendly
-		self._list.append(a)
-		if re.compile(r'^d').match(a[0]):
-			self._browser.browser_model.append([self._browser.foldericon,a[8],'d'])
+
+		# make windows FTP friendly
+		if re.compile(r'<DIR>').match(a[2]):
+			self._browser.browser_model.append([self._browser.foldericon,e,'d'])
 		else:
-			self._browser.browser_model.append([self._browser.fileicon,a[8],'f'])
+			self._browser.browser_model.append([self._browser.fileicon,e,'f'])
+
+		#if len(a) < 9: return	#skip if the line returned is not friendly
+		#self._list.append(a)
+		#if re.compile(r'^d').match(a[0]):
+		#	self._browser.browser_model.append([self._browser.foldericon,a[8],'d'])
+		#else:
+		#	self._browser.browser_model.append([self._browser.fileicon,a[8],'f'])
 
 	def on_list_row_activated(self,tv,path,viewcol):
 		selection = tv.get_selection()
