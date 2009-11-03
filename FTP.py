@@ -26,6 +26,7 @@ from ftplib import FTP
 import re
 import sys
 import os
+import subprocess
 
 class FTPWindowHelper:
 	def __init__(self, plugin, window):
@@ -42,7 +43,8 @@ class FTPWindowHelper:
 		self._browser = FileBrowser(self)
 		panel = self._window.get_side_panel()
 		panel.add_item(self._browser, "FTP Browser", 'gtk-disconnect')
-
+		
+        #load config from file (if it exists)
 		self.load_config()
 
 	def flush_events(self):
@@ -54,7 +56,7 @@ class FTPWindowHelper:
 		try:
 			f = open(self.config_path+"/lastftp.ini");
 		except:
-			#print "no config at ",self.config_path+"/lastftp.ini"
+			#if no config file, then silently quit
 			pass
 		else:
 			self._browser.url.set_text(f.readline().strip())
@@ -63,6 +65,10 @@ class FTPWindowHelper:
 			self._browser.filt.set_text(f.readline().strip())
 			self.ftp_cwd = f.readline().strip()
 			self._browser.location.set_text(self.ftp_cwd)
+			if ("True" == f.readline().strip() ):
+				self._browser.combo_pasv_mode.set_active(True)
+			else:
+				self._browser.combo_pasv_mode.set_active(False)
 			f.close()
 
 	def save_config(self):
@@ -83,6 +89,10 @@ class FTPWindowHelper:
 			f.write(self._browser.pasw.get_text()+"\n")
 			f.write(self._browser.filt.get_text()+"\n")
 			f.write(self.ftp_cwd+"\n")
+			if (self._browser.combo_pasv_mode.get_active()):
+				f.write("True\n")
+			else:
+				f.write("False\n")
 			f.close()
 
 	# Statusbar message
@@ -237,6 +247,7 @@ class FTPWindowHelper:
 			ftp = FTP()
 			ftp.connect(url,port)
 			ftp.login(u,p)
+			ftp.set_pasv(self._browser.combo_pasv_mode.get_active())
 		except:
 			self.error_msg('FTP Connecting error')
 			return None
@@ -331,9 +342,9 @@ class FileBrowser(gtk.VBox):
 		self.user.set_size_request(10,-1)
 		self.pasw = gtk.Entry()
 		self.pasw.set_size_request(10,-1)
+		self.pasw.set_visibility(False)
 		self.filt = gtk.Entry()
 		self.filt.set_size_request(10,-1)
-		self.pasw.set_visibility(False)
 
 		ff.attach(self.url,1,2,0,1);
 		ff.attach(self.user,1,2,1,2);
@@ -361,18 +372,37 @@ class FileBrowser(gtk.VBox):
 		btn_refresh.add(i)
 		btn_refresh.connect("clicked", helper.on_refresh)
 
+		#list for combo box (Active/Passive FTP)
+		self.list = gtk.ListStore(int, str)
+		iter = self.list.append( (False, "Active FTP",) )
+		self.list.set(iter)
+		iter = self.list.append( (True, "Passive FTP",) )
+		self.list.set(iter)
+
+		# save as button for adding new file
 		i=gtk.Image()
 		i.set_from_stock('gtk-save-as',gtk.ICON_SIZE_BUTTON)
 		btn_save_as = gtk.Button()
 		btn_save_as.add(i)
 		btn_save_as.connect("clicked", helper.on_save_as)
 
-		buttons=gtk.HBox(False)
-		buttons.pack_start(btn_connect,False,False)
-		buttons.pack_start(btn_refresh,False,False)
-		buttons.pack_start(btn_save_as,False,False)
+		#Combo box
+		self.combo_pasv_mode = gtk.ComboBox()
+		cell = gtk.CellRendererText()
+		self.combo_pasv_mode.pack_start(cell, True)
+		self.combo_pasv_mode.add_attribute(cell, 'text', 1)
+		self.combo_pasv_mode.set_model(self.list)
+		self.combo_pasv_mode.set_active(True) #default: passive mode=True
+		
 
-		self.pack_start(buttons,False,False)
+		#pack buttons and combo box (active/passive FTP) on same row
+		buttonsAndCombo=gtk.HBox(False)
+		buttonsAndCombo.pack_start(btn_connect,False,False)
+		buttonsAndCombo.pack_start(btn_refresh,False,False)
+		buttonsAndCombo.pack_start(btn_save_as,False,False)
+		buttonsAndCombo.pack_start(self.combo_pasv_mode,False,False)
+		self.pack_start(buttonsAndCombo,False,False)
+
 
 		#location label
 		self.location = gtk.Label(helper.ftp_cwd)
