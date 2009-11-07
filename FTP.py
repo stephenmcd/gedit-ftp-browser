@@ -278,12 +278,11 @@ class FTPWindowHelper:
 		m.destroy()
 
 	def ftp_list(self,ftp):
-		self._list = []
+
 		self._browser.browser_model.clear()
 		self.update_status('Reading %s' %self.ftp_cwd)
 		if self.ftp_cwd != '/':
 			self._browser.browser_model.append([self._browser.foldericon,'..','d'])
-
 		try:
 			allfiles = ftp.dir(self.ftp_cwd,self.list_files)
 		except:
@@ -291,20 +290,12 @@ class FTPWindowHelper:
 			return
 
 	def list_files(self,item):
+
 		a = re.compile(r'\s+').split(item)
-
-		# make windows FTP friendly
-		if re.compile(r'<DIR>').match(a[2]):
-			self._browser.browser_model.append([self._browser.foldericon,e,'d'])
+		if re.compile(r'<DIR>').match(a[2]) or re.compile(r'^d').match(a[0]):
+			self._browser.browser_model.append([self._browser.foldericon,a[-1],'d'])
 		else:
-			self._browser.browser_model.append([self._browser.fileicon,e,'f'])
-
-		#if len(a) < 9: return	#skip if the line returned is not friendly
-		#self._list.append(a)
-		#if re.compile(r'^d').match(a[0]):
-		#	self._browser.browser_model.append([self._browser.foldericon,a[8],'d'])
-		#else:
-		#	self._browser.browser_model.append([self._browser.fileicon,a[8],'f'])
+			self._browser.browser_model.append([self._browser.fileicon,a[-1],'f'])
 
 	def on_list_row_activated(self,tv,path,viewcol):
 		selection = tv.get_selection()
