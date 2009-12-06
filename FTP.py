@@ -26,35 +26,50 @@ from ftplib import FTP
 import re
 import sys
 import os
-import subprocess
+
+LOCAL_PATH = "/tmp/gedit/"
 
 class FTPWindowHelper:
+
 	def __init__(self, plugin, window):
+
 		self._window = window
 		self._plugin = plugin
+		
 		# Prime the statusbar
 		self.statusbar = window.get_statusbar()
 		self.context_id = self.statusbar.get_context_id("FTPPlugin")
 		self.message_id = None
-		self.config_path = os.path.expanduser('~/.gnome2/gedit/plugins')
-		self.ftp_cwd = '/'
+		self.ftp_cwd = "/"
 
 		# create panel
 		self._browser = FileBrowser(self)
 		panel = self._window.get_side_panel()
-		panel.add_item(self._browser, "FTP Browser", 'gtk-disconnect')
+		panel.add_item(self._browser, "FTP Browser", "gtk-disconnect")
 		
-        #load config from file (if it exists)
+		# load config from file (if it exists)
+		self.config_path = os.path.dirname(os.path.abspath(__file__))
+		self.config_file = os.path.join(self.config_path, "lastftp.ini")
 		self.load_config()
+
+		# connect the tab-added event (and apply manually to existing docs) to 
+		# check for files in the ftp directory as these may be opened on 
+		# startup by the reopen-tabs plugin for example
+		for doc in window.get_documents():
+			self.on_tab_added(window, tab)
+		window.connect("tab-added", self.on_tab_added)
 
 	def flush_events(self):
 		while gtk.events_pending():
 			gtk.main_iteration() 
 	
 	def load_config(self):
-		# load last config
+		"""
+		load last config
+		"""
+	
 		try:
-			f = open(self.config_path+"/lastftp.ini");
+			f = open(self.config_file);
 		except:
 			#if no config file, then silently quit
 			pass
@@ -65,13 +80,15 @@ class FTPWindowHelper:
 			self._browser.filt.set_text(f.readline().strip())
 			self.ftp_cwd = f.readline().strip()
 			self._browser.location.set_text(self.ftp_cwd)
-			if ("True" == f.readline().strip() ):
-				self._browser.combo_pasv_mode.set_active(True)
-			else:
-				self._browser.combo_pasv_mode.set_active(False)
+			pasv = f.readline().strip() == "True"
+			self._browser.combo_pasv_mode.set_active(pasv)
 			f.close()
 
 	def save_config(self):
+		"""
+		save config file
+		"""
+	
 		if not os.path.exists(self.config_path):
 			try:
 				os.makedirs(self.config_path)
@@ -79,9 +96,9 @@ class FTPWindowHelper:
 				self.error_msg("Error creating user plugin directory")
 				return
 		try:
-			f = open(self.config_path+"/lastftp.ini", "wt");
+			f = open(self.config_file, "wt");
 		except:
-			self.error_msg("Can't write config at ",self.config_path+"/lastftp.ini")
+			self.error_msg("Can't write config at ",self.config_file)
 			pass
 		else:
 			f.write(self._browser.url.get_text()+"\n")
@@ -95,14 +112,21 @@ class FTPWindowHelper:
 				f.write("False\n")
 			f.close()
 
-	# Statusbar message
 	def update_status(self, message):
+		"""
+		sets a message in the status bar
+		"""
+
 		if self.message_id:
 			self.statusbar.remove(self.context_id, self.message_id)
 		self.message_id = self.statusbar.push(self.context_id, "FTP: %s" % message)
 		self.flush_events()
 
 	def deactivate(self):
+		"""
+		destroy gtk objects on deactivation
+		"""
+		
 		panel = self._window.get_side_panel()
 		panel.remove_item(self._browser)
 		self._window = None
@@ -111,17 +135,37 @@ class FTPWindowHelper:
 		if self.message_id:
 			self.statusbar.remove(self.context_id, self.message_id)
 
-	def update_ui(self):
-		doc = self._window.get_active_document()
-		if doc!=None and hasattr(doc,'is_ftpfile'):
-			self.update_status('Temp file %s' %doc.get_uri_for_display())
-		pass
-
 	def on_connect(self, btn):
-		self.open_folder(None);
+		"""
+		ftp home button clicked
+		"""
+	
+		self.open_folder(None)
 
 	def on_refresh(self, btn):
-		self.open_folder(".");
+		"""
+		ftp refresh button is clicked
+		"""
+		
+		self.open_directory(".")
+
+	def on_tab_added(self, window, tab):
+		"""
+		when a tab is created check if the doc is in the ftp directory and if 
+		so mark it as an ftp file and retrieve its contents if the local file 
+		is missing
+		"""
+
+		doc = tab.get_document()
+		local_file = doc.get_uri_for_display()
+		if local_file is not None and local_file.startswith(LOCAL_PATH):
+			ftp_file = "/%s" % local_file.split(LOCAL_PATH, 1)[1].split("/", 1)[1]
+			if not os.path.exists(local_file):
+				def callback(s):
+					doc.set_text(s)
+					doc.save(True)
+				self._get_ftp_file(ftp_file, callback)
+			self._mark_doc_as_ftp(doc, local_file, ftp_file)
 
 	def on_save_as(self, btn):
 		"""
@@ -134,7 +178,10 @@ class FTPWindowHelper:
 		doc = win.get_active_document()
 		if doc is None:
 			return
-		title = doc.get_uri().split(os.sep)[-1]
+		title = doc.get_uri()
+		if title is None:
+			title = ""
+		title = title.split(os.sep)[-1]
 	
 		# show the dialog for entering the filename
 		dialog = gtk.MessageDialog(buttons=gtk.BUTTONS_OK_CANCEL,
@@ -142,7 +189,7 @@ class FTPWindowHelper:
 		dialog.set_default_response(gtk.RESPONSE_OK)
 		dialog.set_markup("\nSave as:")
 		entry = gtk.Entry()
-		entry.set_activates_default(gtk.TRUE)
+		entry.set_activates_default(True)
 		if title is not None:
 			entry.set_text(title)
 		dialog.vbox.pack_end(entry, True, True, 0)
@@ -151,120 +198,166 @@ class FTPWindowHelper:
 		# save to the temp file and upload		
 		if dialog.run() == gtk.RESPONSE_OK:
 			title = entry.get_text()
-			tmpfile = self._get_tmpfile(title)
+			local_file = self._get_local_file(title)
 			doc.set_modified(True)
-			doc.load("file:///%s" % tmpfile, gedit.encoding_get_current(), 0, 
+			doc.load("file://%s" % local_file, gedit.encoding_get_current(), 0, 
 				True)
-			self._setup_ftpfile(doc, tmpfile, "%s/%s" % (self.ftp_cwd, title), 
+			self._mark_doc_as_ftp(doc, local_file, "%s/%s" % (self.ftp_cwd, title), 
 				True)
 			doc.save(True)
-			dialog.destroy()
+		dialog.destroy()
 		
-	def _setup_ftpfile(self, doc, tmpfile, ftpfile, refresh):
+	def _mark_doc_as_ftp(self, doc, local_file, ftp_file, refresh=False):
 		"""
-		mark the doc as an ftp file and connect the saved event to the 
-		document, only once
+		mark the doc as an ftp file and connect the saved event to the doc
+		which will save the file to the ftp server
 		"""
-		
-		if hasattr(doc, "_save_handler"):
-			doc.disconnect(doc._save_handler)
-		doc.is_ftpfile = True
-		doc._save_handler = doc.connect("saved", self.on_ftp_doc_saved, tmpfile, 
-			ftpfile, self._browser.url.get_text(), self._browser.user.get_text(), 
-			self._browser.pasw.get_text(), refresh)
 
-	def _get_tmpfile(self, file):
+		if hasattr(doc, "_ftp_save_handler"):
+			doc.disconnect(doc._ftp_save_handler)
+		doc._ftp_save_handler = doc.connect("saved", self.on_ftp_doc_saved, 
+			local_file, ftp_file, self._browser.url.get_text(), 
+			self._browser.user.get_text(), self._browser.pasw.get_text(), 
+			refresh)
+
+	def _get_local_file(self, ftp_file):
 		"""
-		given a filename, return the path to the corresponding temp file
+		given a ftp filename, return the path to the corresponding local file
 		ensuring directories in the path are created
 		"""
 
-		path = "/tmp/gedit/%s%s" %(self._browser.url.get_text(),self.ftp_cwd)
-		tmpfile = '%s/%s' %(path,file)
-		if not os.path.exists(path):
+		local_file = "%s%s%s" % (LOCAL_PATH, self._browser.url.get_text(), 
+			self._get_ftp_path(ftp_file))
+		local_path = os.path.dirname(local_file)
+		if not os.path.exists(local_path):
 			try:
-				os.makedirs(path, mode=0777)
+				os.makedirs(local_path, mode=0777)
 			except:
-				self.error_msg("Error creating directory %s" %(path))
+				self.error_msg("Error creating directory %s" % (local_path))
 				return None
-		return tmpfile
+		return local_file
 
-	def open_file(self, file):
-
-		tmpfile = self._get_tmpfile(file)
-		if tmpfile is None:
+	def _get_ftp_file(self, ftp_file, callback):
+		"""
+		download the file over ftp and apply the callback to it - push this
+		code into the main thread with gobject.timeout_add otherwise its
+		blocking nature raises errors in the calls to gtk.main_iteration
+		"""
+		
+		def run_as_timeout():
+			ftp = self.ftp_connect()
+			if ftp is None:
+				return False
+			_ftp_file = self._get_ftp_path(ftp_file)
+			self.update_status("Downloading %s" % _ftp_file)
+			try:
+				data = []
+				ftp.retrbinary("RETR %s" % _ftp_file, data.append)
+				callback("".join(data))
+			except:
+				self.error_msg("Error retrieving file %s" % _ftp_file)
+			finally:
+				ftp.close()
+			return False
+		gobject.timeout_add(1, run_as_timeout)
+		
+	def _get_ftp_path(self, ftp_file):
+		"""
+		return the full ftp path to the given ftp file
+		"""
+		
+		ftp_file = "/%s" % ftp_file
+		if self.ftp_cwd != "/":
+			ftp_file = "%s%s" % (self.ftp_cwd, ftp_file)
+		return ftp_file
+		
+	def open_file(self, ftp_file):
+		"""
+		file in the ftp browser listing is clicked
+		"""
+	
+		local_file = self._get_local_file(ftp_file)
+		if local_file is None:
 			return
-		ftp = self.ftp_connect()
-		if ftp==None: return
+		def callback(s):
+			f = open(local_file, "wb")
+			f.write(s)
+			f.close()
+			tab = self._window.create_tab_from_uri("file://%s" % 
+				local_file, gedit.encoding_get_current(), 0, False, True)
+			self._mark_doc_as_ftp(tab.get_document(), local_file, 
+				self._get_ftp_path(ftp_file), False)
+			self.update_status("Temp file loaded %s" % local_file)
+		self._get_ftp_file(ftp_file, callback)
 
-		self.update_status('Downloading %s/%s' %(self.ftp_cwd,file))
-		try:
-			ftp.retrbinary('RETR %s/%s' %(self.ftp_cwd,file), open(tmpfile, 'wb').write)
-		except:
-			self.error_msg('Error retrieving file %s/%s' %(self.ftp_cwd,file))
-			ftp.close()
+	def on_ftp_doc_saved(self, doc, arg1, local_path, ftp_path, url, username, 
+		password, refresh):
+		"""
+		document save event handler that's attached to ftp docs that
+		pushes the contents of the document to the ftp server when saved
+		"""
+	
+		if doc.is_untouched():
 			return
-		ftp.close()
-		tab = self._window.create_tab_from_uri('file:///%s' %tmpfile,gedit.encoding_get_current(),0,False,True)
-		self._setup_ftpfile(tab.get_document(), tmpfile, "%s/%s" % 
-			(self.ftp_cwd, file), False)
-		self.update_status('Temp file loaded %s' %tmpfile)
-
-	def on_ftp_doc_saved(self,doc,arg1,src,dest,url,u,p,refresh):
-		if doc.is_untouched(): return
-		ftp = self.ftp_connect(url,u,p,False)
-		if ftp==None: return
-
-		self.update_status('Uploading %s to %s@%s%s' %(src,u,url,dest))
+		ftp = self.ftp_connect(url=url, username=username, password=password, 
+			save=False)
+		if ftp is None:
+			return
+		self.update_status("Uploading %s to %s@%s%s" % 
+			(local_path, username, url, ftp_path))
 		try:
-			ftp.storbinary('STOR %s' %dest, open(src, 'rb'), 1024)
-			self.update_status('Saved.')
+			ftp.storbinary("STOR %s" % ftp_path, open(local_path, "rb"), 1024)
+			self.update_status("Saved.")
 		except:
-			self.error_msg('Error uploading file %s' %dest)
+			self.error_msg("Error uploading file %s" % ftp_path)
 		if refresh:
 			self.ftp_list(ftp)
 		ftp.close()
 
-	def ftp_connect(self,url=None,u=None,p=None,save=True):
-		if url==None:
+	def ftp_connect(self, url=None, username=None, password=None, save=True):
+		"""
+		create a connection to the ftp server and return it
+		"""
+		
+		if url is None:
 			url = self._browser.url.get_text()
-		if u==None:
-			u = self._browser.user.get_text()
-		if p==None:
-			p = self._browser.pasw.get_text()
+		if username is None:
+			username = self._browser.user.get_text()
+		if password is None:
+			password = self._browser.pasw.get_text()
 
-		if url.find(':') != -1:
-			v = url.split(':')
-			url = v[0]
-			port = v[1]
-		else:
-			port = 21
-
-		self.update_status('Connecting %s@%s on port %s' %(u,url,port))
+		port = 21
+		if ":" in url:
+			url, port = url.split(":", 1)
+		self.update_status("Connecting %s@%s on port %s" % (username, url, port))
 
 		# go ftp
 		try:
 			ftp = FTP()
-			ftp.connect(url,port)
-			ftp.login(u,p)
+			ftp.connect(url, port)
+			ftp.login(username, password)
 			ftp.set_pasv(self._browser.combo_pasv_mode.get_active())
 		except:
-			self.error_msg('FTP Connecting error')
+			self.error_msg("FTP Connecting error")
 			return None
 		self.save_config()
 		return ftp
 
-	def open_folder(self, folder):
-		ftp = self.ftp_connect()
-		if ftp==None: return
+	def open_directory(self, ftp_dir):
+		"""
+		directory in the ftp browser listing is clicked
+		"""
 
+		ftp = self.ftp_connect()
+		if ftp is None:
+			return
 		# reset directory to default
-		if folder != None:
+		if ftp_dir is not None:
 			try:
-				ftp.cwd("%s/%s" %(self.ftp_cwd,folder))
+				ftp.cwd(self._get_ftp_path(ftp_dir))
 			except:
-				self.error_msg('Error opening folder')
-				self.open_folder(None)
+				self.error_msg("Error opening directory")
+				self.open_directory(None)
 				return
 		self.ftp_cwd = ftp.pwd()
 		self._browser.location.set_text(self.ftp_cwd)
@@ -272,42 +365,62 @@ class FTPWindowHelper:
 		ftp.close()
 
 	def error_msg(self,msg):
-		m = gtk.MessageDialog(None,gtk.DIALOG_DESTROY_WITH_PARENT,gtk.MESSAGE_INFO,gtk.BUTTONS_OK,"%s. Reason:\n%s %s" %(msg,sys.exc_info()[0],sys.exc_info()[1]))
-		m.set_title('FTP Browser')
+		"""
+		displays an error message dialog
+		"""
+		
+		m = gtk.MessageDialog(None, gtk.DIALOG_DESTROY_WITH_PARENT, 
+			gtk.MESSAGE_INFO, gtk.BUTTONS_OK, "%s. Reason:\n%s %s" % 
+			(msg, sys.exc_info()[0], sys.exc_info()[1]))
+		m.set_title("FTP Browser")
 		m.run()
 		m.destroy()
 
 	def ftp_list(self,ftp):
+		"""
+		retrieves a directory listing from the ftp server
+		"""
 
 		self._browser.browser_model.clear()
-		self.update_status('Reading %s' %self.ftp_cwd)
-		if self.ftp_cwd != '/':
-			self._browser.browser_model.append([self._browser.foldericon,'..','d'])
+		self.update_status("Reading %s" % self.ftp_cwd)
+		if self.ftp_cwd != "/":
+			self._browser.browser_model.append([self._browser.dir_icon, 
+				"..", "d"])
 		try:
-			allfiles = ftp.dir(self.ftp_cwd,self.list_files)
+			allfiles = ftp.dir(self.ftp_cwd, self.list_files)
 		except:
-			self.error_msg('FTP LIST error')
+			self.error_msg("FTP LIST error")
 			return
 
 	def list_files(self,item):
+		"""
+		adds an item to the ftp browser listing, either file or directory
+		"""
 
-		a = re.compile(r'\s+').split(item)
-		if re.compile(r'<DIR>').match(a[2]) or re.compile(r'^d').match(a[0]):
-			self._browser.browser_model.append([self._browser.foldericon,a[-1],'d'])
+		a = re.compile(r"\s+").split(item)
+		if re.compile(r"<DIR>").match(a[2]) or re.compile(r"^d").match(a[0]):
+			self._browser.browser_model.append([self._browser.dir_icon, 
+				a[-1],"d"])
 		else:
-			self._browser.browser_model.append([self._browser.fileicon,a[-1],'f'])
+			self._browser.browser_model.append([self._browser.file_icon,
+				a[-1], "f"])
 
 	def on_list_row_activated(self,tv,path,viewcol):
+		"""
+		item in ftp browser listing is clicked, open file or directory
+		"""
+		
 		selection = tv.get_selection()
-		(model, iter) = selection.get_selected()
+		model, iter = selection.get_selected()
 		ftype = model.get_value(iter, 2)
 		fname = model.get_value(iter, 1)
-		if ftype == 'd':
-			self.open_folder(fname)
+		if ftype == "d":
+			self.open_directory(fname)
 		else:
 			self.open_file(fname)
 
 class FTPPlugin(gedit.Plugin):
+
 	def __init__(self):
 		gedit.Plugin.__init__(self)
 		self._instances = {}
@@ -318,10 +431,6 @@ class FTPPlugin(gedit.Plugin):
 	def deactivate(self, window):
 		self._instances[window].deactivate()
 		del self._instances[window]
-
-	def update_ui(self, window):
-		self._instances[window].update_ui()
-
 
 class FileBrowser(gtk.VBox):
 	def __init__(self, helper):
@@ -419,8 +528,8 @@ class FileBrowser(gtk.VBox):
 		sw.add(self.browser)
 		self.pack_start(sw)
 
-		self.foldericon = self.browser.render_icon('gtk-directory',gtk.ICON_SIZE_MENU)
-		self.fileicon = self.browser.render_icon('gtk-file',gtk.ICON_SIZE_MENU)
+		self.dir_icon = self.browser.render_icon('gtk-directory', gtk.ICON_SIZE_MENU)
+		self.file_icon = self.browser.render_icon('gtk-file', gtk.ICON_SIZE_MENU)
 
 		# add columns to the treeview
 		col = gtk.TreeViewColumn()
@@ -438,3 +547,4 @@ class FileBrowser(gtk.VBox):
 		# connect stuff
 		self.browser.connect("row-activated",helper.on_list_row_activated)
 		self.show_all()
+
