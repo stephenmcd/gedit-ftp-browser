@@ -149,6 +149,13 @@ class FTPWindowHelper:
 		
 		self.open_directory(".")
 
+	def on_parent(self, btn):
+		"""
+		ftp up to parent directory is clicked
+		"""
+		
+		self.open_directory("..")
+
 	def on_tab_added(self, window, tab):
 		"""
 		when a tab is created check if the doc is in the ftp directory and if 
@@ -383,9 +390,6 @@ class FTPWindowHelper:
 
 		self._browser.browser_model.clear()
 		self.update_status("Reading %s" % self.ftp_cwd)
-		if self.ftp_cwd != "/":
-			self._browser.browser_model.append([self._browser.dir_icon, 
-				"..", "d"])
 		try:
 			allfiles = ftp.dir(self.ftp_cwd, self.list_files)
 		except:
@@ -479,6 +483,12 @@ class FileBrowser(gtk.VBox):
 		btn_refresh.add(i)
 		btn_refresh.connect("clicked", helper.on_refresh)
 
+		i=gtk.Image()
+		i.set_from_stock('gtk-go-up',gtk.ICON_SIZE_BUTTON)
+		btn_parent =  gtk.Button()
+		btn_parent.add(i)
+		btn_parent.connect("clicked", helper.on_parent)
+
 		#list for combo box (Active/Passive FTP)
 		self.list = gtk.ListStore(int, str)
 		iter = self.list.append( (False, "Active FTP",) )
@@ -506,6 +516,7 @@ class FileBrowser(gtk.VBox):
 		buttonsAndCombo=gtk.HBox(False)
 		buttonsAndCombo.pack_start(btn_connect,False,False)
 		buttonsAndCombo.pack_start(btn_refresh,False,False)
+		buttonsAndCombo.pack_start(btn_parent,False,False)
 		buttonsAndCombo.pack_start(btn_save_as,False,False)
 		buttonsAndCombo.pack_start(self.combo_pasv_mode,False,False)
 		self.pack_start(buttonsAndCombo,False,False)
