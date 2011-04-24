@@ -402,7 +402,7 @@ class FTPWindowHelper:
 		adds an item to the ftp browser listing, either file or directory
 		"""
 
-		a = re.compile(r"\s+").split(item,8)
+		a = re.compile(r"\s+").split(item)
 		if re.compile(r"<DIR>").match(a[2]) or re.compile(r"^d").match(a[0]):
 			self._browser.browser_model.append([self._browser.dir_icon, 
 				a[-1],"d"])
