@@ -26,6 +26,7 @@ from ftplib import FTP
 import re
 import sys
 import os
+import pango
 
 LOCAL_PATH = "/tmp/gedit/"
 
@@ -401,7 +402,7 @@ class FTPWindowHelper:
 		adds an item to the ftp browser listing, either file or directory
 		"""
 
-		a = re.compile(r"\s+").split(item)
+		a = re.compile(r"\s+").split(item,8)
 		if re.compile(r"<DIR>").match(a[2]) or re.compile(r"^d").match(a[0]):
 			self._browser.browser_model.append([self._browser.dir_icon, 
 				a[-1],"d"])
@@ -524,6 +525,7 @@ class FileBrowser(gtk.VBox):
 
 		#location label
 		self.location = gtk.Label(helper.ftp_cwd)
+		self.location.set_ellipsize(pango.ELLIPSIZE_MIDDLE)
 		self.location.set_line_wrap(True)
 		self.location.set_justify(gtk.JUSTIFY_LEFT)
 		self.location.set_alignment(0,0.5)
