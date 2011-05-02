@@ -119,7 +119,7 @@ class FTPWindowHelper:
 		"""
 
 		if self.message_id:
-			self.statusbar.remove(self.context_id, self.message_id)
+			self.statusbar.remove_message(self.context_id, self.message_id)
 		self.message_id = self.statusbar.push(self.context_id, "FTP: %s" % message)
 		self.flush_events()
 
@@ -134,14 +134,15 @@ class FTPWindowHelper:
 		self._plugin = None
 		self._browser = None
 		if self.message_id:
-			self.statusbar.remove(self.context_id, self.message_id)
+			self.statusbar.remove_message(self.context_id, self.message_id)
 
 	def on_connect(self, btn):
 		"""
 		ftp home button clicked
 		"""
-	
-		self.open_folder(None)
+		
+		self.ftp_cwd = "/"
+		self.open_directory(".")
 
 	def on_refresh(self, btn):
 		"""
@@ -393,6 +394,7 @@ class FTPWindowHelper:
 		self.update_status("Reading %s" % self.ftp_cwd)
 		try:
 			allfiles = ftp.dir(self.ftp_cwd, self.list_files)
+			self.update_status("done")
 		except:
 			self.error_msg("FTP LIST error")
 			return
@@ -473,6 +475,7 @@ class FileBrowser(gtk.VBox):
 		#b.pack_start(gtk.Label('Connect'))
 		btn_connect = gtk.Button()
 		btn_connect.add(i)
+		btn_connect.set_tooltip_text("Connect to FTP server")
 		btn_connect.connect("clicked", helper.on_connect)
 
 		#b = gtk.HBox(False)
@@ -482,12 +485,14 @@ class FileBrowser(gtk.VBox):
 		#b.pack_start(gtk.Label('Refresh'))
 		btn_refresh = gtk.Button()
 		btn_refresh.add(i)
+		btn_refresh.set_tooltip_text("Refresh remote directory list")
 		btn_refresh.connect("clicked", helper.on_refresh)
 
 		i=gtk.Image()
 		i.set_from_stock('gtk-go-up',gtk.ICON_SIZE_BUTTON)
 		btn_parent =  gtk.Button()
 		btn_parent.add(i)
+		btn_parent.set_tooltip_text("Go up to parent directory")
 		btn_parent.connect("clicked", helper.on_parent)
 
 		#list for combo box (Active/Passive FTP)
@@ -502,6 +507,7 @@ class FileBrowser(gtk.VBox):
 		i.set_from_stock('gtk-save-as',gtk.ICON_SIZE_BUTTON)
 		btn_save_as = gtk.Button()
 		btn_save_as.add(i)
+		btn_save_as.set_tooltip_text("Save new file to FTP server")
 		btn_save_as.connect("clicked", helper.on_save_as)
 
 		#Combo box
