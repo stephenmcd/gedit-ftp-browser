@@ -99,7 +99,7 @@ class FTPWindowHelper:
 		try:
 			f = open(self.config_file, "wt");
 		except:
-			self.error_msg("Can't write config at ",self.config_file)
+			self.error_msg("Can't write config at %s" % self.config_file)
 			pass
 		else:
 			f.write(self._browser.url.get_text()+"\n")
@@ -362,6 +362,14 @@ class FTPWindowHelper:
 			return
 		# reset directory to default
 		if ftp_dir is not None:
+			regex = re.compile('(/[^/]*?/\.\.)$')
+			parent = regex.sub('', self._get_ftp_path(ftp_dir))
+			try:
+				ftp.cwd(parent)
+ 			except:
+ 				self.error_msg("Error opening directory")
+ 				self.open_directory(None)
+
 			try:
 				ftp.cwd(self._get_ftp_path(ftp_dir))
 			except:
@@ -444,11 +452,11 @@ class FileBrowser(gtk.VBox):
 		gtk.VBox.__init__(self)
 
 		# ftp params
-		ff = gtk.Table(4,2)
+		ff = gtk.Table(2,4)
 		ff.set_row_spacings(2); ff.set_col_spacings(5);
 		ff.attach(gtk.Label('Host'),0,1,0,1,False,False);
 		ff.attach(gtk.Label('User'),0,1,1,2,False,False);
-		ff.attach(gtk.Label('Pass'),0,1,2,3,False,False);
+		ff.attach(gtk.Label('Pass'),2,3,1,2,False,False);
 		#ff.attach(gtk.Label('Filter'),0,1,3,4,False,False);
 		self.url = gtk.Entry()
 		self.url.set_size_request(10,-1)
@@ -460,9 +468,9 @@ class FileBrowser(gtk.VBox):
 		self.filt = gtk.Entry()
 		self.filt.set_size_request(10,-1)
 
-		ff.attach(self.url,1,2,0,1);
+		ff.attach(self.url,1,4,0,1);
 		ff.attach(self.user,1,2,1,2);
-		ff.attach(self.pasw,1,2,2,3);
+		ff.attach(self.pasw,3,4,1,2);
 		#ff.attach(self.filt,1,2,3,4);
 
 		self.pack_start(ff, False, False)
@@ -566,4 +574,3 @@ class FileBrowser(gtk.VBox):
 		# connect stuff
 		self.browser.connect("row-activated",helper.on_list_row_activated)
 		self.show_all()
-
